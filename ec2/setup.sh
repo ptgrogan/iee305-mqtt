@@ -37,14 +37,20 @@ mkdir -p runtime/auth
 sudo chgrp 1883 runtime/auth
 chmod 750 runtime/auth
 chmod 644 mosquitto.conf acl
-if [[ -e runtime/auth/passwd ]]; then
-    printf '%s\n' 'runtime/auth/passwd already exists; keeping the current instructor and student' \
-        'passwords. To change one: bash password.sh student (or instructor)'
-else
-    printf '%s\n' 'Choose a distinct instructor password. Avoid single quotes for the local .env example.'
-    bash password.sh instructor
-    printf '%s\n' 'Choose a different class password for the student account.'
-    bash password.sh student
-fi
+# Check each account, so a run interrupted after the first password still asks
+# for the second one next time.
+for username in instructor student; do
+    if [[ -e runtime/auth/passwd ]] && grep -q "^$username:" runtime/auth/passwd; then
+        echo "Keeping the existing $username password. To change it: bash password.sh $username"
+        continue
+    fi
+    case "$username" in
+        instructor) echo 'Choose a distinct instructor password. Avoid single quotes for the local .env example.' ;;
+        student) echo 'Choose a different class password for the student account.' ;;
+    esac
+    until bash password.sh "$username"; do
+        echo 'Password not saved; try again (Ctrl+C to stop).'
+    done
+done
 printf '%s\n' 'Setup complete. Start the broker with: docker compose up -d' \
     'Share only the student password, through Canvas; never distribute runtime/.'
