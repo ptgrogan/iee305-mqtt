@@ -3,6 +3,4 @@
 **/.venv/
 **/.env
 local/data/
-local/certs/
 ec2/runtime/
-students/ca.crt

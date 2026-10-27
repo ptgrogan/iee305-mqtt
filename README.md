@@ -23,7 +23,6 @@ Instructor browser --> localhost:8080 --SSH tunnel--> Pi frontend on 127.0.0.1:8
 | --- | --- |
 | `ec2/compose.yaml`, `mosquitto.conf`, `acl` | Broker, its two TLS listeners, topic permissions, and the certbot renewal service |
 | `ec2/setup.sh`, `certbot-deploy.sh`, `password.sh` | Obtain the Let's Encrypt certificate, install it for Mosquitto, and create/rotate passwords |
-| `ec2/install-compose.sh` | Install the Compose CLI plugin on Amazon Linux 2023 if it is missing |
 | `local/compose.yaml`, `configuration.example.yaml` | Raspberry Pi Zigbee2MQTT service, SONOFF Ember adapter, and MQTT settings |
 | `students/` | `subscribe.py`, `publish.py`, `chat.py`, and their [README](students/README.md) |
 | `check_access.py` | Live TLS/authentication/authorization check for both lectures, without the dongle |
@@ -65,28 +64,16 @@ The standard AMI login is `ec2-user`. From **Windows PowerShell**, substituting 
 ssh -i 'C:\path\course-ec2.pem' ec2-user@mqtt.iee305.code-lab.org
 ```
 
-In the **EC2 SSH terminal**, install Git and Docker, enable Docker at boot, and grant the login user Docker access:
-
-```bash
-sudo dnf install -y git docker
-sudo systemctl enable --now docker
-sudo usermod -aG docker ec2-user
-exit
-```
-
-Reconnect with SSH so the new group membership takes effect. Then, as **ec2-user**:
+**Prerequisites:** Git, Docker Engine enabled at boot, and the [Docker Compose plugin](https://docs.docker.com/compose/install/linux/), with `ec2-user` in the `docker` group. On AL2023, `sudo dnf install -y git docker` provides Git and Docker Engine; the Compose plugin is installed separately. In the **EC2 SSH terminal**, as **ec2-user**, confirm both work without `sudo`, then clone the repository:
 
 ```bash
 docker info
+docker compose version
 cd ~
 git clone https://github.com/ptgrogan/iee305-mqtt.git
-cd ~/iee305-mqtt/ec2
-# The standard AL2023 AMI supplies curl. If missing: sudo dnf install -y curl-minimal
-bash install-compose.sh
-docker compose version
 ```
 
-The helper follows [Docker's manual Compose-plugin installation method](https://docs.docker.com/compose/install/linux/). It installs Compose `v5.6.0` for the current user after checking the architecture-specific SHA-256 digest, or preserves an existing Compose installation. Run the remaining commands as `ec2-user`, using `sudo` only where shown.
+Run the remaining commands as `ec2-user`, using `sudo` only where shown.
 
 In the EC2 security group, allow:
 
@@ -105,31 +92,17 @@ In the **EC2 SSH terminal**, pass the DNS name without a scheme or port, and opt
 ```bash
 cd ~/iee305-mqtt/ec2
 bash setup.sh mqtt.iee305.code-lab.org
-# On first setup, prompts twice for each password. Use different, strong passwords.
+# Prompts twice each for the instructor and student passwords. Use different, strong passwords.
 docker compose up -d
 docker compose ps
 docker compose logs --tail=60 mosquitto
 ```
 
-The setup script runs certbot once in standalone mode to obtain the certificate, then runs `certbot-deploy.sh` to copy the key and chain into the `tls` volume, readable by the container's Mosquitto group (1883). Certbot's account and keys stay in the `letsencrypt` volume, which is never mounted into the broker. Passwords are stored as hashes in `runtime/auth/passwd`. Setup is safe to re-run: it keeps an unexpired certificate (avoiding Let's Encrypt rate limits) and existing passwords. If it stops during the password prompts, finish with `bash password.sh instructor` and `bash password.sh student`.
+The setup script runs certbot once in standalone mode to obtain the certificate, then runs `certbot-deploy.sh` to copy the key and chain into the `tls` volume, readable by the container's Mosquitto group (1883). Certbot's account and keys stay in the `letsencrypt` volume, which is never mounted into the broker. Passwords are stored as hashes in `runtime/auth/passwd`. If setup stops during the password prompts, finish with `bash password.sh instructor` and `bash password.sh student`. Setup is safe to re-run: it keeps an unexpired certificate, avoiding Let's Encrypt rate limits, and once `runtime/auth/passwd` exists it keeps the current passwords without prompting. Change a password at any time with `password.sh`; see Operations below.
 
 After `docker compose up -d`, the `certbot` service checks twice a day and renews the certificate once it enters its renewal window, well before it expires (Let's Encrypt certificates last 90 days or less). Its deploy hook installs the renewed files; the Mosquitto healthcheck notices the new certificate within an hour and sends Mosquitto `SIGHUP`, which reloads the certificate without disconnecting clients.
 
 Never commit or distribute anything from `runtime/`, the Docker volumes, the local `.env`, or the instructor password.
-
-### Migrating from the original teaching CA
-
-A broker set up with the earlier private "IEE305 Lecture 20 Teaching CA" keeps its passwords: because `runtime/auth/passwd` already exists, setup does not prompt for them. To choose new ones, run `bash password.sh student` (or `instructor`) afterwards. Open ports 80 and 443 in the security group first. Then, on **EC2**:
-
-```bash
-cd ~/iee305-mqtt && git pull --ff-only && cd ec2
-docker compose down
-bash setup.sh mqtt.iee305.code-lab.org
-docker compose up -d
-rm -rf runtime/private runtime/certs runtime/broker-host.txt  # retire the teaching CA
-```
-
-Then update the Pi as described at the end of section 3. Any `ca.crt` copies handed out earlier are no longer needed.
 
 ## 2. Prepare the Raspberry Pi and USB dongle
 
@@ -205,15 +178,6 @@ On a new network, Zigbee2MQTT creates and saves random Zigbee keys and PAN IDs i
 
 ```text
 iee305/l20/zigbee2mqtt/lecture_sensor
-```
-
-**Updating a Pi prepared for the teaching CA:** its `data/configuration.yaml` still names the old CA file, which is no longer mounted. On the **Pi**:
-
-```bash
-cd ~/iee305-mqtt && git pull --ff-only && cd local
-sed -i '/^  ca: \/app\/ca.crt$/d' data/configuration.yaml
-docker compose up -d --force-recreate
-rm -rf certs
 ```
 
 ## 4. Give students the repository
