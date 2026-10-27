@@ -43,17 +43,16 @@ Images are pinned to Zigbee2MQTT `2.14.2` and Mosquitto `2.1.2-alpine`. The latt
 
 Use an **Amazon Linux 2023** EC2 instance with a public endpoint and SSH key authentication. Both x86_64 and ARM64/Graviton hosts work with the broker image; the Pi and EC2 host do not need matching CPU architectures. The broker runs in a container, so Amazon Linux is a suitable host for this example. AWS provides a Docker package for AL2023; see [AWS's Docker installation instructions](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-docker.html).
 
-The standard AMI login is `ec2-user`. From **Windows PowerShell**, substitute your private-key path, local example-folder path, and EC2 public hostname. The commands below assume the examples are in `C:\path\to\iee305-mqtt`:
+The standard AMI login is `ec2-user`. Source files are installed directly from [the GitHub repository](https://github.com/ptgrogan/iee305-mqtt) using Git over HTTPS. From **Windows PowerShell**, connect to EC2, substituting your private-key path and EC2 public hostname:
 
 ```powershell
-scp -i 'C:\path\course-ec2.pem' -r 'C:\path\to\iee305-mqtt' ec2-user@ec2-REPLACE.compute.amazonaws.com:~/
 ssh -i 'C:\path\course-ec2.pem' ec2-user@ec2-REPLACE.compute.amazonaws.com
 ```
 
-In the **EC2 SSH terminal**, install Docker and OpenSSL, enable Docker at boot, and grant the login user Docker access:
+In the **EC2 SSH terminal**, install Git, Docker, and OpenSSL, enable Docker at boot, and grant the login user Docker access:
 
 ```bash
-sudo dnf install -y docker openssl ca-certificates
+sudo dnf install -y git docker openssl ca-certificates
 sudo systemctl enable --now docker
 sudo usermod -aG docker ec2-user
 exit
@@ -63,6 +62,8 @@ Reconnect with SSH so the new group membership takes effect. Then, as **ec2-user
 
 ```bash
 docker info
+cd ~
+git clone https://github.com/ptgrogan/iee305-mqtt.git
 cd ~/iee305-mqtt/ec2
 # The standard AL2023 AMI supplies curl. If missing: sudo dnf install -y curl-minimal
 bash install-compose.sh
@@ -120,7 +121,7 @@ On the **Pi**:
 ```bash
 dpkg --print-architecture
 sudo apt update
-sudo apt install usbutils openssl python3-venv
+sudo apt install git usbutils openssl python3-venv
 sudo systemctl enable --now docker
 docker info
 docker compose version
@@ -139,15 +140,11 @@ The dongle must run **Zigbee coordinator/NCP firmware** supported by Zigbee2MQTT
 
 ## 3. Start Zigbee2MQTT on the Pi
 
-The folder remains named `local/` to distinguish the Pi service from the EC2 broker. In **Windows PowerShell**, copy the example folder to the Pi, replacing the local path with your example-folder location:
-
-```powershell
-scp -r 'C:\path\to\iee305-mqtt' YOUR_PI_USER@iee305-pi.local:~/
-```
-
-On the **Pi**, prepare the persistent configuration on its Linux filesystem:
+The folder remains named `local/` to distinguish the Pi service from the EC2 broker. In the **Pi SSH terminal**, clone the repository over HTTPS and prepare the persistent configuration on the Pi's Linux filesystem:
 
 ```bash
+cd ~
+git clone https://github.com/ptgrogan/iee305-mqtt.git
 cd ~/iee305-mqtt/local
 bash prepare.sh
 nano .env
@@ -155,7 +152,7 @@ nano .env
 
 Set `MQTT_HOST` to the exact endpoint passed to the EC2 setup script, `MQTT_PASSWORD` to the **instructor** MQTT password, and `ZIGBEE_DEVICE` to the actual Linux device path. The broker hostname is not `localhost`. Quoting the password with single quotes in `.env` preserves `$` and `#`; the example asks you to avoid single quotes in this password. The service reads the connection settings from Compose environment variables, which override the YAML values.
 
-Copy the public CA through your Windows computer, so the EC2 private SSH key can stay on your computer. In **Windows PowerShell**, substitute the key path, EC2 hostname, and Pi login:
+The generated public CA is not part of the Git checkout. Transfer this certificate through your Windows computer, so the EC2 private SSH key can stay on your computer. In **Windows PowerShell**, substitute the key path, EC2 hostname, and Pi login:
 
 ```powershell
 scp -i 'C:\path\course-ec2.pem' ec2-user@ec2-REPLACE.compute.amazonaws.com:~/iee305-mqtt/ec2/runtime/certs/ca.crt "$env:TEMP\iee305-l20-ca.crt"
@@ -190,11 +187,13 @@ iee305/l20/zigbee2mqtt/lecture_sensor
 
 ## 4. Give students the subscriber
 
-Share `students/`, its `ca.crt`, the broker hostname, username `student`, and the class password through Canvas. Students only need Python 3.10+ and broker connectivity; they need no dongle, Docker, or AWS account. This example uses a native MQTT client, not a browser WebSocket client.
+Share the repository URL through Canvas, along with the public `ca.crt`, broker hostname, username `student`, and class password. Students need Git, Python 3.10+, and broker connectivity; they need no dongle, Docker, or AWS account. They clone the source using the commands below and save the supplied CA as `iee305-mqtt/students/ca.crt` before running the subscriber. This example uses a native MQTT client, not a browser WebSocket client.
 
-From the `students` folder on **Windows PowerShell**:
+In **Windows PowerShell**:
 
 ```powershell
+git clone https://github.com/ptgrogan/iee305-mqtt.git
+Set-Location iee305-mqtt/students
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe subscribe.py ec2-REPLACE.compute.amazonaws.com
@@ -203,6 +202,8 @@ py -m venv .venv
 Or in **Linux/macOS**:
 
 ```bash
+git clone https://github.com/ptgrogan/iee305-mqtt.git
+cd iee305-mqtt/students
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python subscribe.py ec2-REPLACE.compute.amazonaws.com
@@ -234,6 +235,7 @@ Suggested live sequence:
 
 ## Operations and troubleshooting
 
+- **Update source:** commit and push source changes from your development computer, then run `cd ~/iee305-mqtt` and `git pull --ff-only` on EC2 and the Pi. For an existing checkout, use this pull command instead of cloning again. Run `docker compose up -d` from `ec2/` or `local/` as appropriate after updating; restart the affected service when its mounted configuration changes. Git leaves ignored credentials and runtime state on each host. Keep `.env`, `ec2/runtime/`, and `local/data/` out of commits, and preserve them between updates. Run the EC2 `setup.sh` only for initial setup.
 - **Rotate class access:** on EC2, `bash password.sh student`, followed by `docker compose restart mosquitto`. Restarting disconnects current clients as well as applying the new password. Update Canvas. Rotate `instructor` similarly, update `local/.env`, then run `docker compose up -d --force-recreate zigbee2mqtt` locally.
 - **Renew the broker certificate:** before 90 days, on EC2 run the signing command below using the existing CA, CSR, and extension file. Clients keep the same CA. If the endpoint changed, create a new CSR and matching SAN extension first; update local/student hostnames too.
 - **TLS failure:** hostname/IP must match the certificate SAN; use the correct `ca.crt`, check certificate expiry and client clocks. Keep certificate verification enabled.
