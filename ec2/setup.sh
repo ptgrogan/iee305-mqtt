@@ -48,8 +48,13 @@ for username in instructor student; do
         instructor) echo 'Choose a distinct instructor password. Avoid single quotes for the local .env example.' ;;
         student) echo 'Choose a different class password for the student account.' ;;
     esac
-    until bash password.sh "$username"; do
-        echo 'Password not saved; try again (Ctrl+C to stop).'
+    for attempt in 1 2 3; do
+        bash password.sh "$username" && break
+        if [[ $attempt -eq 3 ]]; then
+            echo "Could not save the $username password." >&2
+            exit 1
+        fi
+        echo 'Password not saved; try again.'
     done
 done
 printf '%s\n' 'Setup complete. Start the broker with: docker compose up -d' \

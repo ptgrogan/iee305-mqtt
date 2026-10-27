@@ -8,16 +8,20 @@ case "$username" in
     *) printf '%s\n' 'Usage: bash password.sh instructor|student' >&2; exit 1 ;;
 esac
 [[ -d runtime/auth ]] || { echo 'Run setup.sh first.' >&2; exit 1; }
+# The file is owned by this host user with the broker's group, GID 1883, so the
+# container's mosquitto user can read it. Run mosquitto_passwd with that same
+# group: version 2.1.2 crashes silently when its group differs from the file's.
 args=()
-if [[ ! -e runtime/auth/passwd ]]; then
+if [[ -e runtime/auth/passwd ]]; then
+    sudo chgrp 1883 runtime/auth/passwd
+else
     args+=(-c)
 fi
-docker run --rm -it --user "$(id -u):$(id -g)" \
+docker run --rm -it --user "$(id -u):1883" \
     --mount "type=bind,src=$PWD/runtime/auth,dst=/auth" \
     --entrypoint mosquitto_passwd eclipse-mosquitto:2.1.2-alpine \
-    "${args[@]}" /auth/passwd "$username"
-# The container's mosquitto user is UID/GID 1883. Preserve the host owner.
-sudo chgrp 1883 runtime/auth/passwd
+    "${args[@]}" /auth/passwd "$username" ||
+    { status=$?; echo "mosquitto_passwd exited with status $status; password not saved." >&2; exit "$status"; }
 chmod 640 runtime/auth/passwd
 echo "Password for $username saved."
 # The running broker keeps its loaded passwords until it reloads the file.
