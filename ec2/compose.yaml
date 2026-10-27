@@ -1,0 +1,42 @@
+name: iee305-l20-broker
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.1.2-alpine
+    restart: unless-stopped
+    ports:
+      - "8883:8883"
+    volumes:
+      - type: bind
+        source: ./mosquitto.conf
+        target: /mosquitto/config/mosquitto.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./acl
+        target: /mosquitto/config/acl
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./runtime/auth
+        target: /mosquitto/auth
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./runtime/certs
+        target: /mosquitto/certs
+        read_only: true
+        bind:
+          create_host_path: false
+      - mqtt-data:/mosquitto/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  mqtt-data:

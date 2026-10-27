@@ -1,0 +1,29 @@
+# Copy to data/configuration.yaml once. Zigbee2MQTT writes keys and devices there.
+version: 5
+mqtt:
+  base_topic: iee305/l20/zigbee2mqtt
+  # Compose overrides server, user, and password from .env.
+  server: mqtts://replace-with-ec2-public-dns:8883
+  user: instructor
+  ca: /app/ca.crt
+  reject_unauthorized: true
+  client_id: iee305-l20-zigbee2mqtt
+serial:
+  port: /dev/ttyUSB0
+  adapter: ember
+  baudrate: 115200
+  rtscts: false
+frontend:
+  enabled: true
+  host: 0.0.0.0
+  port: 8080
+homeassistant:
+  enabled: false
+advanced:
+  channel: 20
+  network_key: GENERATE
+  pan_id: GENERATE
+  ext_pan_id: GENERATE
+  last_seen: ISO_8601
+  log_output: [console]
+  enable_external_js: false

@@ -1,0 +1,7 @@
+# Only these named accounts have topic permissions; there is no wildcard user.
+user instructor
+topic readwrite iee305/l20/#
+
+# One shared class account. Students can observe, but cannot send commands.
+user student
+topic read iee305/l20/#

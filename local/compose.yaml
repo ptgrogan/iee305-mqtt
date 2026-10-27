@@ -1,0 +1,34 @@
+name: iee305-l20-local
+
+services:
+  zigbee2mqtt:
+    image: ghcr.io/koenkk/zigbee2mqtt:2.14.2
+    # Raspberry Pi 3 with Raspberry Pi OS 64-bit; direct USB connection.
+    platform: linux/arm64
+    restart: unless-stopped
+    environment:
+      TZ: America/Phoenix
+      ZIGBEE2MQTT_CONFIG_MQTT_SERVER: mqtts://${MQTT_HOST:?Set MQTT_HOST in .env}:8883
+      ZIGBEE2MQTT_CONFIG_MQTT_USER: instructor
+      ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD in .env}
+    devices:
+      - ${ZIGBEE_DEVICE:?Set ZIGBEE_DEVICE in .env}:/dev/ttyUSB0
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - type: bind
+        source: ./data
+        target: /app/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./certs/ca.crt
+        target: /app/ca.crt
+        read_only: true
+        bind:
+          create_host_path: false
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
