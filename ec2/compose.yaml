@@ -5,7 +5,8 @@ services:
     image: eclipse-mosquitto:2.1.2-alpine
     restart: unless-stopped
     ports:
-      - "8883:8883"
+      - "443:443"    # MQTT over secure WebSockets (students)
+      - "8883:8883"  # MQTT over TLS
     volumes:
       - type: bind
         source: ./mosquitto.conf
@@ -25,13 +26,47 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - type: bind
-        source: ./runtime/certs
+      - type: volume
+        source: tls
         target: /mosquitto/certs
+        read_only: true
+      - mqtt-data:/mosquitto/data
+    healthcheck:
+      # Mosquitto rereads certfile/keyfile on SIGHUP. Send one after certbot
+      # replaces the certificate, so renewal never disconnects clients.
+      test: ["CMD-SHELL", "[ /mosquitto/certs/fullchain.pem -ot /tmp/certs-loaded ] || { touch /tmp/certs-loaded && kill -HUP 1; }"]
+      interval: 1h
+      start_period: 1m
+      start_interval: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  certbot:
+    # Renews the Let's Encrypt certificate; setup.sh obtains the first one.
+    image: certbot/certbot:v5.8.0
+    restart: unless-stopped
+    ports:
+      - "80:80"  # HTTP-01 challenge; certbot listens only while renewing
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        trap exit TERM
+        while :; do
+          certbot renew --quiet --deploy-hook 'sh /hooks/deploy.sh'
+          sleep 43200 & wait $$!
+        done
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - tls:/out
+      - type: bind
+        source: ./certbot-deploy.sh
+        target: /hooks/deploy.sh
         read_only: true
         bind:
           create_host_path: false
-      - mqtt-data:/mosquitto/data
     logging:
       driver: json-file
       options:
@@ -40,3 +75,5 @@ services:
 
 volumes:
   mqtt-data:
+  letsencrypt:
+  tls:

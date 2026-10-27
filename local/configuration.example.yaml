@@ -3,9 +3,8 @@ version: 5
 mqtt:
   base_topic: iee305/l20/zigbee2mqtt
   # Compose overrides server, user, and password from .env.
-  server: mqtts://replace-with-ec2-public-dns:8883
+  server: wss://mqtt.iee305.code-lab.org:443
   user: instructor
-  ca: /app/ca.crt
   reject_unauthorized: true
   client_id: iee305-l20-zigbee2mqtt
 serial:

@@ -8,7 +8,9 @@ services:
     restart: unless-stopped
     environment:
       TZ: America/Phoenix
-      ZIGBEE2MQTT_CONFIG_MQTT_SERVER: mqtts://${MQTT_HOST:?Set MQTT_HOST in .env}:8883
+      # Secure WebSockets on 443 pass networks that block 8883. The broker's Let's Encrypt
+      # certificate is verified with Node's built-in public CAs; no CA file is needed.
+      ZIGBEE2MQTT_CONFIG_MQTT_SERVER: wss://${MQTT_HOST:?Set MQTT_HOST in .env}:443
       ZIGBEE2MQTT_CONFIG_MQTT_USER: instructor
       ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD in .env}
     devices:
@@ -19,12 +21,6 @@ services:
       - type: bind
         source: ./data
         target: /app/data
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ./certs/ca.crt
-        target: /app/ca.crt
-        read_only: true
         bind:
           create_host_path: false
     logging:

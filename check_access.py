@@ -1,13 +1,20 @@
-"""Check TLS, student read access, rejected writes, and rejected logins on the broker."""
+"""Check the class broker: TLS, logins, and the L-19 and L-20 topic permissions.
+
+Every test message is non-retained and uses a unique .../access-check/... topic,
+outside the Zigbee command path.
+"""
 
 import argparse
 from getpass import getpass
-from pathlib import Path
 import secrets
-import ssl
 import threading
 
+import certifi
 import paho.mqtt.client as mqtt
+
+BROKER = "mqtt.iee305.code-lab.org"
+PORTS = {"websockets": 443, "tcp": 8883}
+NOT_AUTHORIZED = 135  # MQTT 5 reason code 0x87
 
 
 def require_event(event, description):
@@ -15,15 +22,14 @@ def require_event(event, description):
         raise RuntimeError(f"Timed out: {description}")
 
 
-def connect(host, ca, username=None, password=None, expect_success=True):
+def connect(args, transport, username=None, password=None, expect_success=True):
     ready = threading.Event()
     result = []
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv5)
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, transport=transport,
+                         protocol=mqtt.MQTTv5)
     if username is not None:
         client.username_pw_set(username, password)
-    context = ssl.create_default_context(cafile=str(ca))
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
-    client.tls_set_context(context)
+    client.tls_set(ca_certs=args.ca)
 
     def on_connect(client, userdata, flags, reason_code, properties):
         result.append(not reason_code.is_failure)
@@ -31,7 +37,7 @@ def connect(host, ca, username=None, password=None, expect_success=True):
 
     client.on_connect = on_connect
     # Callbacks run on the background network thread after loop_start().
-    client.connect(host, 8883, 30)
+    client.connect(args.host, PORTS[transport], 30)
     client.loop_start()
     try:
         require_event(ready, f"CONNACK for {username or 'anonymous'}")
@@ -41,69 +47,89 @@ def connect(host, ca, username=None, password=None, expect_success=True):
         client.disconnect()
         client.loop_stop()
         raise
+    if not expect_success:
+        # Stop paho's automatic reconnect attempts with the rejected credentials.
+        client.disconnect()
+        client.loop_stop()
+        return None
     return client
+
+
+def expect_delivery(publisher, subscriber, topic):
+    payload = secrets.token_hex(8).encode()
+    subscribed = threading.Event()
+    received = threading.Event()
+    refused = []
+
+    def on_subscribe(client, userdata, mid, reason_codes, properties):
+        refused.extend(code for code in reason_codes if code.is_failure)
+        subscribed.set()
+
+    def on_message(client, userdata, message):
+        if message.topic == topic and message.payload == payload:
+            received.set()
+
+    subscriber.on_subscribe = on_subscribe
+    subscriber.on_message = on_message
+    subscriber.subscribe(topic, qos=1)
+    require_event(subscribed, f"SUBACK for {topic}")
+    if refused:
+        raise RuntimeError(f"Subscription to {topic} refused: {refused[0]}")
+    publisher.publish(topic, payload, qos=1, retain=False)
+    require_event(received, f"delivery on {topic}")
+    subscriber.unsubscribe(topic)
+
+
+def expect_denied(client, topic):
+    acknowledged = threading.Event()
+    codes = []
+
+    def on_publish(client, userdata, mid, reason_code, properties):
+        codes.append(reason_code)
+        acknowledged.set()
+
+    # MQTT 5 QoS 1 makes an authorization failure observable in PUBACK.
+    client.on_publish = on_publish
+    client.publish(topic, b'{"source":"access-check"}', qos=1, retain=False)
+    require_event(acknowledged, f"PUBACK for {topic}")
+    client.on_publish = None
+    if codes[0].value != NOT_AUTHORIZED:
+        raise RuntimeError(f"Publish to {topic} was not denied: {codes[0]}")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("host")
-    parser.add_argument("--ca", type=Path, required=True)
+    parser.add_argument("host", nargs="?", default=BROKER)
+    parser.add_argument("--ca", default=certifi.where(),
+                        help="CA bundle (default: certifi's public CAs, which include Let's Encrypt)")
     args = parser.parse_args()
     instructor_password = getpass("Instructor password: ")
     student_password = getpass("Student password: ")
-    clients = []
-    try:
-        for username, password in [(None, None), ("student", secrets.token_urlsafe(32))]:
-            clients.append(connect(args.host, args.ca, username, password, False))
-        print("PASS: anonymous and incorrect-password logins rejected")
 
-        instructor = connect(args.host, args.ca, "instructor", instructor_password)
-        clients.append(instructor)
-        student = connect(args.host, args.ca, "student", student_password)
-        clients.append(student)
+    for username, password in [(None, None), ("student", secrets.token_urlsafe(32))]:
+        connect(args, "websockets", username, password, expect_success=False)
+    print("PASS: anonymous and incorrect-password logins rejected")
 
-        topic = "iee305/l20/access-check/" + secrets.token_hex(8)
-        payload = b'{"source":"access-check","value":305}'
-        subscribed = threading.Event()
-        received = threading.Event()
-        denied = threading.Event()
-        failures = []
-
-        def on_subscribe(client, userdata, mid, reason_codes, properties):
-            if any(code.is_failure for code in reason_codes):
-                failures.append("Student subscription was refused")
-            subscribed.set()
-
-        def on_message(client, userdata, message):
-            if message.topic == topic and message.payload == payload:
-                received.set()
-
-        def on_publish(client, userdata, mid, reason_code, properties):
-            # MQTT 5 QoS 1 makes an authorization failure observable in PUBACK.
-            if reason_code.value != 135:  # 0x87: Not authorized
-                failures.append(f"Student publish was not denied: {reason_code}")
-            denied.set()
-
-        student.on_subscribe = on_subscribe
-        student.on_message = on_message
-        student.on_publish = on_publish
-        student.subscribe(topic, qos=1)
-        require_event(subscribed, "student SUBACK")
-        if failures:
-            raise RuntimeError("; ".join(failures))
-        message = instructor.publish(topic, payload, qos=1, retain=False)
-        message.wait_for_publish(timeout=10)
-        require_event(received, "instructor message received by student")
-        print("PASS: instructor can publish and student can receive over verified TLS")
-        student.publish(topic, b'{"source":"student-write-test"}', qos=1, retain=False)
-        require_event(denied, "student publish rejection")
-        if failures:
-            raise RuntimeError("; ".join(failures))
-        print("PASS: student publish denied (MQTT 5 Not authorized)")
-    finally:
-        for client in clients:
-            client.disconnect()
-            client.loop_stop()
+    for transport, port in PORTS.items():
+        clients = []
+        try:
+            for username, password in [("instructor", instructor_password),
+                                       ("student", student_password),
+                                       ("student", student_password)]:
+                clients.append(connect(args, transport, username, password))
+            instructor, student, classmate = clients
+            run = secrets.token_hex(8)
+            expect_delivery(instructor, student, f"iee305/l20/access-check/{run}")
+            expect_denied(student, f"iee305/l20/access-check/{run}")
+            expect_delivery(student, classmate, f"iee305/l19/class/access-check/{run}")
+            expect_delivery(instructor, student, f"iee305/l19/instructor/access-check/{run}")
+            expect_denied(student, f"iee305/l19/instructor/access-check/{run}")
+        finally:
+            for client in clients:
+                client.disconnect()
+                client.loop_stop()
+        print(f"PASS: {transport} on port {port}: L-20 read-only, L-19 class publishing, "
+              "instructor-only broadcasts")
 
 
 if __name__ == "__main__":

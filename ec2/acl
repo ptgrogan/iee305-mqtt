@@ -1,7 +1,13 @@
 # Only these named accounts have topic permissions; there is no wildcard user.
 user instructor
+topic readwrite iee305/l19/#
 topic readwrite iee305/l20/#
 
-# One shared class account. Students can observe, but cannot send commands.
+# One shared class account for both lectures.
+# L-19: read everything in the exercise; publish only under iee305/l19/class/.
+#       iee305/l19/instructor/ is the instructor's broadcast area.
+# L-20: observe Zigbee telemetry, but never send device commands.
 user student
+topic read iee305/l19/#
+topic readwrite iee305/l19/class/#
 topic read iee305/l20/#
