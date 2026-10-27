@@ -19,5 +19,15 @@ docker run --rm -it --user "$(id -u):$(id -g)" \
 # The container's mosquitto user is UID/GID 1883. Preserve the host owner.
 sudo chgrp 1883 runtime/auth/passwd
 chmod 640 runtime/auth/passwd
-printf '%s\n' 'Password saved. If the broker is running, restart it to revoke existing connections:' \
-    'docker compose restart mosquitto'
+echo "Password for $username saved."
+# The running broker keeps its loaded passwords until it reloads the file.
+# SIGHUP reloads it without disconnecting anyone; already-connected clients stay
+# connected until they reconnect, so restart the broker to revoke them too.
+if docker compose ps --status running --services 2>/dev/null | grep -qx mosquitto; then
+    # Compose reports this as "Killed", but SIGHUP only makes Mosquitto reload.
+    docker compose kill -s HUP mosquitto >/dev/null 2>&1
+    printf '%s\n' 'The broker reloaded the password file; new logins use the new password.' \
+        'To also disconnect clients logged in with the old password: docker compose restart mosquitto'
+else
+    echo 'The broker is not running; it will use this password when started.'
+fi

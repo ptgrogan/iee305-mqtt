@@ -119,7 +119,7 @@ Never commit or distribute anything from `runtime/`, the Docker volumes, the loc
 
 ### Migrating from the original teaching CA
 
-A broker set up with the earlier private "IEE305 Lecture 20 Teaching CA" keeps its passwords. Open ports 80 and 443 in the security group first. Then, on **EC2**:
+A broker set up with the earlier private "IEE305 Lecture 20 Teaching CA" keeps its passwords: because `runtime/auth/passwd` already exists, setup does not prompt for them. To choose new ones, run `bash password.sh student` (or `instructor`) afterwards. Open ports 80 and 443 in the security group first. Then, on **EC2**:
 
 ```bash
 cd ~/iee305-mqtt && git pull --ff-only && cd ec2
@@ -276,7 +276,7 @@ Test messages are non-retained and use unique `.../access-check/...` topics, out
 ## Operations and troubleshooting
 
 - **Update source:** commit and push source changes from your development computer, then `cd ~/iee305-mqtt` and `git pull --ff-only` on EC2 and the Pi. Run `docker compose up -d` from `ec2/` or `local/` as appropriate; after changing `mosquitto.conf` or `acl`, run `docker compose restart mosquitto`. Git leaves ignored credentials and runtime state on each host. Keep `.env`, `ec2/runtime/`, and `local/data/` out of commits, and preserve them between updates.
-- **Rotate class access:** on EC2, `bash password.sh student`, followed by `docker compose restart mosquitto`. Restarting disconnects current clients as well as applying the new password. Update Canvas. Rotate `instructor` similarly, update `local/.env`, then run `docker compose up -d --force-recreate zigbee2mqtt` on the Pi.
+- **Rotate class access:** on EC2, `bash password.sh student`. If the broker is running, the script signals it to reload the password file, so new logins need the new password immediately; clients already connected stay connected. To disconnect them too, follow with `docker compose restart mosquitto`. Update Canvas. Rotate `instructor` similarly, update `local/.env`, then run `docker compose up -d --force-recreate zigbee2mqtt` on the Pi.
 - **Certificate status:** on EC2, `docker compose exec certbot certbot certificates` shows the expiry date; `docker compose exec certbot certbot renew --dry-run` tests renewal against Let's Encrypt's staging service. `docker compose ps` should show Mosquitto as `healthy`. Renewal needs inbound port 80 and a correct A record.
 - **TLS failure:** the hostname must be exactly `mqtt.iee305.code-lab.org`; check the client's clock and run `pip install --upgrade certifi`. Keep certificate verification enabled.
 - **Timeout:** check the A record, the security-group rules for 443/8883, and `docker compose logs mosquitto`. If only 8883 fails, the client's network is blocking it; use 443.

@@ -38,7 +38,8 @@ sudo chgrp 1883 runtime/auth
 chmod 750 runtime/auth
 chmod 644 mosquitto.conf acl
 if [[ -e runtime/auth/passwd ]]; then
-    echo 'Keeping existing MQTT passwords; use password.sh to change them.'
+    printf '%s\n' 'runtime/auth/passwd already exists, so the instructor and student passwords' \
+        'from the earlier setup are kept. To set a new one: bash password.sh student'
 else
     printf '%s\n' 'Choose a distinct instructor password. Avoid single quotes for the local .env example.'
     bash password.sh instructor
