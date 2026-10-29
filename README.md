@@ -204,9 +204,9 @@ Open `https://mqtt.iee305.code-lab.org/` and log in. Username `student` is fille
 - **Lecture 20:** one card per Zigbee2MQTT device: temperature and humidity for HT-1, the last button action for MB-1, and state and power for WO-1. Each card also lists battery, link quality, and last seen, and is labelled when a value is the broker's retained copy. Outlet cards have On/Off/Toggle buttons that publish to `<device>/set`; they work for `instructor` and return `Not authorized` for `student`.
 - **Chat:** joins the same rooms as `chat.py`, with the same JSON format and Last Will, so browser and Python users talk to each other.
 
-Click a panel's title to collapse or expand it. While both lectures are open they sit side by side; collapse one and the other takes the full width. To start with one lecture open, share `https://mqtt.iee305.code-lab.org/?lecture=19` or `?lecture=20` on Canvas. Chat counts as part of L-19.
+The page opens with Lecture 19 expanded and Lecture 20 collapsed. Click a panel's title to collapse or expand it. While both lectures are open they sit side by side; while one is collapsed the other takes the full width. For L-20, share `https://mqtt.iee305.code-lab.org/?lecture=20` on Canvas, which opens with only Lecture 20 expanded; `?lecture=19` gives the default view. Chat counts as part of L-19.
 
-For the projector, press **Class display**, or open `https://mqtt.iee305.code-lab.org/?display`, which combines with the lecture link, as in `?display&lecture=19`. Display mode enlarges the type and hides the forms, leaving the message feed and device cards. On a projected screen, log in as `student`. Switch out of display mode to use the outlet buttons as `instructor`.
+For the projector, press **Class display**, or open `https://mqtt.iee305.code-lab.org/?display`, which combines with the lecture link, as in `?display&lecture=20`. Display mode enlarges the type and hides the forms, leaving the message feed and device cards. On a projected screen, log in as `student`. Switch out of display mode to use the outlet buttons as `instructor`.
 
 The page itself is a teaching example. `ec2/web/app.js` is a short, commented MQTT.js client: connect, subscribe, publish, and handle messages, the same steps as the Python template in a different language and runtime. To try changes before deploying, open `ec2/web/index.html` directly from disk. A page opened as a local file connects to the class broker, and `?broker=wss://HOST/mqtt` points it at another one.
 
@@ -214,7 +214,7 @@ The page itself is a teaching example. `ec2/web/app.js` is a short, commented MQ
 
 Students publish under `iee305/l19/class/`, conventionally `iee305/l19/class/ASURITE/...`, and can read everything under `iee305/l19/`. Only the instructor can publish under `iee305/l19/instructor/`. Suggested sequence:
 
-1. Project the class display, `?display&lecture=19`. Everyone runs `subscribe.py --topic "iee305/l19/#"`. Publish a broadcast with `publish.py iee305/l19/instructor/announce "Welcome to L-19" --username instructor`; it appears on every terminal and on the projector at once.
+1. Project the class display, `?display`. Everyone runs `subscribe.py --topic "iee305/l19/#"`. Publish a broadcast with `publish.py iee305/l19/instructor/announce "Welcome to L-19" --username instructor`; it appears on every terminal and on the projector at once.
 2. Students publish to their own topic with `publish.py`, then subscribe to `iee305/l19/class/+/hello` to see the single-level wildcard collect everyone's messages.
 3. **Retained messages:** publish with `--retain`, then start a new subscriber; it receives the saved value immediately with `retain=True`. Note that `No matching subscribers` is a successful broker response, not an error.
 4. **QoS:** compare `--qos 0`, `1`, and `2`; with QoS 0 there is no broker acknowledgment.

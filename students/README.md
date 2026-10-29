@@ -55,7 +55,7 @@ Close the chat window instead of pressing Ctrl+C, and the others see `(lost conn
 
 ### Browser client
 
-Open <https://mqtt.iee305.code-lab.org/?lecture=19> and log in as `student` with the same class password. The page is another MQTT client, written in JavaScript with the MQTT.js library. It connects over secure WebSockets on port 443, like the Python scripts, and the broker applies the same permissions. You can watch a topic filter, publish with any QoS and the retain flag, and chat with classmates who use `chat.py`. Closing the tab while in a chat room triggers your Last Will. Its source, [`ec2/web/app.js`](../ec2/web/app.js), is short and commented: compare its `connect`, `subscribe`, `publish`, and `message` handling with the Python template below.
+Open <https://mqtt.iee305.code-lab.org/> and log in as `student` with the same class password. The page is another MQTT client, written in JavaScript with the MQTT.js library. It connects over secure WebSockets on port 443, like the Python scripts, and the broker applies the same permissions. You can watch a topic filter, publish with any QoS and the retain flag, and chat with classmates who use `chat.py`. Closing the tab while in a chat room triggers your Last Will. Its source, [`ec2/web/app.js`](../ec2/web/app.js), is short and commented: compare its `connect`, `subscribe`, `publish`, and `message` handling with the Python template below.
 
 ### Writing your own client
 
