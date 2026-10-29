@@ -25,7 +25,7 @@ Instructor browser --> localhost:8080 --SSH tunnel--> Pi frontend on 127.0.0.1:8
 | Location | Purpose |
 | --- | --- |
 | `ec2/compose.yaml`, `mosquitto.conf`, `acl` | Broker, its listeners, topic permissions, nginx, and the certbot renewal service |
-| `ec2/nginx.conf`, `ec2/web/` | HTTPS on port 443: the browser client (`index.html`, `app.js`, `style.css`) and the WebSocket proxy to Mosquitto |
+| `ec2/nginx.conf`, `ec2/web/` | HTTPS on port 443: the browser client (`index.html`, `app.js`, `filter.js`, `style.css`) and the WebSocket proxy to Mosquitto |
 | `ec2/setup.sh`, `certbot-deploy.sh`, `password.sh` | Obtain the Let's Encrypt certificate, install it for nginx and Mosquitto, and create/rotate passwords |
 | `local/compose.yaml`, `configuration.example.yaml` | Raspberry Pi Zigbee2MQTT service, SONOFF Ember adapter, and MQTT settings |
 | `students/` | `subscribe.py`, `publish.py`, `chat.py`, and their [README](students/README.md) |
@@ -207,6 +207,8 @@ Open `https://mqtt.iee305.code-lab.org/` and log in. Username `student` is fille
 The page opens with Lecture 19 expanded and Lecture 20 collapsed. Click a panel's title to collapse or expand it. While both lectures are open they sit side by side; while one is collapsed the other takes the full width. For L-20, share `https://mqtt.iee305.code-lab.org/?lecture=20` on Canvas, which opens with only Lecture 20 expanded; `?lecture=19` gives the default view. Chat counts as part of L-19.
 
 For the projector, press **Class display**, or open `https://mqtt.iee305.code-lab.org/?display`, which combines with the lecture link, as in `?display&lecture=20`. Display mode enlarges the type and hides the forms, leaving the message feed and device cards. On a projected screen, log in as `student`. Switch out of display mode to use the outlet buttons as `instructor`.
+
+The page has a profanity filter, `ec2/web/filter.js`. It replaces profanity and slurs with asterisks in the message tables and the chat, including messages from the Python scripts, and refuses to publish them from the page. It catches repeated letters (`fuuuck`), common substitutions (`sh1t`, `a$$`), and spaced-out letters, while matching whole words so that `class` and `assess` stay visible. The filter runs only in the browser: the broker still delivers every message, and `subscribe.py` and `chat.py` print them unchanged. To tune it, edit `BLOCKED_WORDS` or `ALLOWED_WORDS`, then `git pull` on the instance; pages pick up the change when reloaded.
 
 The page itself is a teaching example. `ec2/web/app.js` is a short, commented MQTT.js client: connect, subscribe, publish, and handle messages, the same steps as the Python template in a different language and runtime. To try changes before deploying, open `ec2/web/index.html` directly from disk. A page opened as a local file connects to the class broker, and `?broker=wss://HOST/mqtt` points it at another one.
 

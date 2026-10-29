@@ -24,6 +24,14 @@ function show(element, text, kind) {
   if (kind) element.classList.add(kind);
 }
 
+// The profanity filter in filter.js masks what other clients send; this refuses
+// to send what it would mask.
+function refuse(output, ...texts) {
+  if (texts.every((text) => clean(text) === text)) return false;
+  show(output, "Not sent: remove the blocked words first.", "error");
+  return true;
+}
+
 function options(extra = {}) {
   // MQTT 5 gives acknowledgments reason codes such as "Not authorized". An empty
   // client ID lets the broker assign a unique one, as in the Python scripts.
@@ -133,7 +141,7 @@ function addRow(table, topic, text, packet) {
   const rows = table.tBodies[0];
   const row = rows.insertRow(0);
   const received = new Date().toISOString().slice(11, 19);
-  for (const value of [received, packet.retain, packet.qos, topic, text]) {
+  for (const value of [received, packet.retain, packet.qos, clean(topic), clean(text)]) {
     row.insertCell().textContent = value;
   }
   if (rows.rows.length > MAX_ROWS) rows.deleteRow(-1);
@@ -154,6 +162,7 @@ function publish(topic, message, qos, retain, output) {
     show(output, "Connect first.", "error");
     return;
   }
+  if (refuse(output, topic, message)) return;
   client.publish(topic, message, { qos, retain }, (err, packet) => {
     const code = ackCodes.get(packet?.messageId);
     ackCodes.delete(packet?.messageId);
@@ -287,6 +296,7 @@ $("chat-join").addEventListener("submit", (event) => {
   }
   const name = $("chat-name").value.trim();
   const topic = `iee305/l19/class/chat/${$("chat-room").value.trim()}`;
+  if (refuse($("chat-result"), name, topic)) return;
   const say = (text) => JSON.stringify({ from: name, text });
   const connection = mqtt.connect(BROKER, options({
     will: { topic, payload: say("(lost connection)"), qos: 1, retain: false },
@@ -303,8 +313,8 @@ $("chat-join").addEventListener("submit", (event) => {
     const text = new TextDecoder().decode(payload);
     const message = parseJson(text);
     const line = document.createElement("li");
-    line.textContent = message?.from !== undefined && message?.text !== undefined
-      ? `[${message.from}] ${message.text}` : `(not chat JSON) ${text}`;
+    line.textContent = clean(message?.from !== undefined && message?.text !== undefined
+      ? `[${message.from}] ${message.text}` : `(not chat JSON) ${text}`);
     $("chat-log").append(line);
     line.scrollIntoView({ block: "nearest" });
   });
@@ -313,7 +323,8 @@ $("chat-join").addEventListener("submit", (event) => {
 $("chat-send").addEventListener("submit", (event) => {
   event.preventDefault();
   const text = $("chat-text").value.trim();
-  if (chat && text) chat.connection.publish(chat.topic, chat.say(text), { qos: 1 });
+  if (!chat || !text || refuse($("chat-result"), text)) return;
+  chat.connection.publish(chat.topic, chat.say(text), { qos: 1 });
   $("chat-text").value = "";
 });
 
