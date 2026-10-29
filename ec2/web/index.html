@@ -23,8 +23,8 @@
   </header>
 
   <main>
-    <section id="l19">
-      <h2>Lecture 19: publish and subscribe</h2>
+    <details id="l19" class="panel" data-lecture="19" open>
+      <summary><h2>Lecture 19: publish and subscribe</h2></summary>
       <form id="subscribe" class="interactive row">
         <label class="grow">Subscribe to <input id="filter" value="iee305/l19/#" required></label>
         <button>Subscribe</button>
@@ -52,10 +52,10 @@
           <tbody></tbody>
         </table>
       </div>
-    </section>
+    </details>
 
-    <section id="l20">
-      <h2>Lecture 20: Zigbee devices</h2>
+    <details id="l20" class="panel" data-lecture="20" open>
+      <summary><h2>Lecture 20: Zigbee devices</h2></summary>
       <div id="devices"></div>
       <details>
         <summary>All messages under iee305/l20/zigbee2mqtt/</summary>
@@ -66,10 +66,10 @@
           </table>
         </div>
       </details>
-    </section>
+    </details>
 
-    <section id="chat" class="interactive">
-      <h2>Chat</h2>
+    <details id="chat" class="panel interactive" data-lecture="19" open>
+      <summary><h2>Lecture 19: chat</h2></summary>
       <form id="chat-join" class="row">
         <label class="grow">Name <input id="chat-name" required></label>
         <label>Room <input id="chat-room" value="lobby" required></label>
@@ -81,7 +81,7 @@
         <input id="chat-text" class="grow" autocomplete="off" aria-label="Message">
         <button>Send</button>
       </form>
-    </section>
+    </details>
   </main>
 
   <template id="device-card">

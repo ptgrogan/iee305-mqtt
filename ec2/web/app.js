@@ -331,6 +331,15 @@ function leaveChat() {
   $("chat-send").hidden = true;
 }
 
+// ---- Panels: ?lecture=19 or ?lecture=20 starts with only that lecture's panels open ----
+
+const lecture = params.get("lecture");
+if (lecture) {
+  for (const panel of document.querySelectorAll("details.panel")) {
+    panel.open = panel.dataset.lecture === lecture;
+  }
+}
+
 // ---- Class display: large type and read-only panels, for the projector ----
 
 document.documentElement.classList.toggle("display", params.has("display"));
