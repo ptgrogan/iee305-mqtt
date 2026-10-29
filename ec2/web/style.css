@@ -1,0 +1,155 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --text: #1c1f24;
+  --muted: #5d6470;
+  --border: #d8dce3;
+  --accent: #8c1d40;  /* ASU maroon */
+  --on-accent: #ffffff;
+  --ok: #1d7a3a;
+  --pending: #8a5a00;
+  --error: #b42318;
+  --flash: #ffc62766;  /* ASU gold, translucent */
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171b;
+    --panel: #1e2126;
+    --text: #e6e8eb;
+    --muted: #9aa1ad;
+    --border: #343941;
+    --accent: #e0749a;
+    --on-accent: #15171b;
+    --ok: #5cc77f;
+    --pending: #e0b050;
+    --error: #ff7b6e;
+    --flash: #ffc62740;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+h1, h2, h3 { margin: 0; }
+h1 { font-size: 1.2rem; color: var(--accent); }
+h2 { font-size: 1.05rem; margin-bottom: 0.75rem; }
+h3 { font-size: 1rem; }
+
+input, select, button { font: inherit; color: inherit; }
+input, select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  min-width: 0;
+}
+button {
+  padding: 0.35rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+}
+button[type="button"] { background: transparent; color: var(--accent); }
+label { display: flex; flex-direction: column; gap: 0.2rem; color: var(--muted); font-size: 0.85rem; }
+label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; }
+label > input, label > select { color: var(--text); font-size: 1rem; }
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+#login { display: flex; flex-wrap: wrap; align-items: end; gap: 0.5rem; }
+#status { flex: 1; min-width: 12rem; }
+.row { display: flex; flex-wrap: wrap; align-items: end; gap: 0.5rem; }
+.grow { flex: 1; min-width: 10rem; }
+form:not(.row) { display: grid; gap: 0.5rem; }
+
+.note { margin: 0.4rem 0; min-height: 1.2em; color: var(--muted); overflow-wrap: anywhere; }
+.note.ok { color: var(--ok); }
+.note.pending { color: var(--pending); }
+.note.error { color: var(--error); }
+
+main {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 1000px) {
+  main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "l19 l20" "chat l20";
+    align-items: start;
+  }
+  #l19 { grid-area: l19; }
+  #l20 { grid-area: l20; }
+  #chat { grid-area: chat; }
+}
+section {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  min-width: 0;
+}
+
+.log { max-height: 60vh; overflow: auto; margin-top: 0.75rem; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th { position: sticky; top: 0; background: var(--panel); text-align: left; color: var(--muted); font-weight: 600; }
+th, td { padding: 0.3rem 0.4rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+td:nth-child(4), td:nth-child(5) { font-family: ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+td:nth-child(1), td:nth-child(2), td:nth-child(3) { white-space: nowrap; }
+details { margin-top: 1rem; }
+summary { cursor: pointer; color: var(--muted); }
+
+#devices { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
+.device {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+}
+.device header { display: grid; gap: 0.1rem; }
+.model, .updated { color: var(--muted); font-size: 0.8rem; }
+.readings { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; }
+.readings .field { display: grid; border-radius: 6px; padding: 0 0.2rem; }
+.readings .field > :last-child { font-size: 1.6rem; font-weight: 600; }
+.details { display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.75rem; font-size: 0.8rem; }
+.details .field { display: contents; }
+.label { color: var(--muted); font-size: 0.8rem; }
+.controls { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.controls .note { flex-basis: 100%; font-size: 0.8rem; }
+
+.flash { animation: flash 1.5s ease-out; }
+@keyframes flash { from { background: var(--flash); } to { background: transparent; } }
+
+#chat-log { list-style: none; padding: 0; margin: 0.5rem 0; max-height: 40vh; overflow: auto; }
+#chat-log li { padding: 0.15rem 0; overflow-wrap: anywhere; }
+
+/* Class display: large type for the projector, with input forms hidden. */
+:root.display { font-size: 20px; }
+.display .interactive { display: none; }
+.display table { font-size: 0.9rem; }
+.display .readings .field > :last-child { font-size: 2.4rem; }
+@media (min-width: 1000px) {
+  .display main { grid-template-areas: "l19 l20"; }
+}

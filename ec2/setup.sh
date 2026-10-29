@@ -36,7 +36,8 @@ umask 077
 mkdir -p runtime/auth
 sudo chgrp 1883 runtime/auth
 chmod 750 runtime/auth
-chmod 644 mosquitto.conf acl
+chmod 644 mosquitto.conf acl nginx.conf
+chmod -R a+rX web
 # Check each account, so a run interrupted after the first password still asks
 # for the second one next time.
 for username in instructor student; do

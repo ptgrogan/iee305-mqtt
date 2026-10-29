@@ -5,8 +5,7 @@ services:
     image: eclipse-mosquitto:2.1.2-alpine
     restart: unless-stopped
     ports:
-      - "443:443"    # MQTT over secure WebSockets (students)
-      - "8883:8883"  # MQTT over TLS
+      - "8883:8883"  # MQTT over TLS; WebSockets arrive through the web service
     volumes:
       - type: bind
         source: ./mosquitto.conf
@@ -35,6 +34,45 @@ services:
       # Mosquitto rereads certfile/keyfile on SIGHUP. Send one after certbot
       # replaces the certificate, so renewal never disconnects clients.
       test: ["CMD-SHELL", "[ /mosquitto/certs/fullchain.pem -ot /tmp/certs-loaded ] || { touch /tmp/certs-loaded && kill -HUP 1; }"]
+      interval: 1h
+      start_period: 1m
+      start_interval: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    # Serves the browser client in web/ and passes MQTT over WebSockets to
+    # Mosquitto, both over HTTPS on port 443 with the same certificate.
+    image: nginx:1.30.6-alpine
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    ports:
+      - "443:443"    # Browser page, and MQTT over secure WebSockets (students, Pi)
+    volumes:
+      - type: bind
+        source: ./nginx.conf
+        target: /etc/nginx/conf.d/default.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./web
+        target: /usr/share/nginx/html
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: volume
+        source: tls
+        target: /certs
+        read_only: true
+    healthcheck:
+      # Like Mosquitto's: reload nginx after certbot replaces the certificate.
+      # A reload keeps open WebSocket connections on the old worker processes.
+      test: ["CMD-SHELL", "[ /certs/fullchain.pem -ot /tmp/certs-loaded ] || { touch /tmp/certs-loaded && nginx -s reload; }"]
       interval: 1h
       start_period: 1m
       start_interval: 10s

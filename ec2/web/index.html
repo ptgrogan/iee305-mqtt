@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IEE 305 MQTT</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"
+          integrity="sha384-ilRYg/zm2XqUafLvBoGVk40UfNRnvUkYMy+e/JPo4YgsFR6X9Q3jYEkqFQXquX4r"
+          crossorigin="anonymous"></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="bar">
+    <h1>IEE 305 MQTT</h1>
+    <form id="login">
+      <label>Username <input id="username" value="student" autocomplete="username" required></label>
+      <label>Password <input id="password" type="password" autocomplete="current-password" required></label>
+      <button id="connect">Connect</button>
+    </form>
+    <p id="status" class="note">Disconnected</p>
+    <button id="display-toggle" type="button">Class display</button>
+  </header>
+
+  <main>
+    <section id="l19">
+      <h2>Lecture 19: publish and subscribe</h2>
+      <form id="subscribe" class="interactive row">
+        <label class="grow">Subscribe to <input id="filter" value="iee305/l19/#" required></label>
+        <button>Subscribe</button>
+      </form>
+      <p id="subscribe-result" class="note"></p>
+      <form id="publish" class="interactive">
+        <label>Topic <input id="pub-topic" value="iee305/l19/class/YOUR_ASURITE/hello" required></label>
+        <label>Message <input id="pub-message" value="Hello from YOUR_ASURITE"></label>
+        <div class="row">
+          <label>QoS
+            <select id="pub-qos">
+              <option>0</option>
+              <option selected>1</option>
+              <option>2</option>
+            </select>
+          </label>
+          <label><input id="pub-retain" type="checkbox"> Retain</label>
+          <button>Publish</button>
+        </div>
+        <p id="publish-result" class="note"></p>
+      </form>
+      <div class="log">
+        <table id="l19-log">
+          <thead><tr><th>Received (UTC)</th><th>Retain</th><th>QoS</th><th>Topic</th><th>Payload</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="l20">
+      <h2>Lecture 20: Zigbee devices</h2>
+      <div id="devices"></div>
+      <details>
+        <summary>All messages under iee305/l20/zigbee2mqtt/</summary>
+        <div class="log">
+          <table id="l20-log">
+            <thead><tr><th>Received (UTC)</th><th>Retain</th><th>QoS</th><th>Topic</th><th>Payload</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <section id="chat" class="interactive">
+      <h2>Chat</h2>
+      <form id="chat-join" class="row">
+        <label class="grow">Name <input id="chat-name" required></label>
+        <label>Room <input id="chat-room" value="lobby" required></label>
+        <button id="chat-button">Join</button>
+      </form>
+      <p id="chat-result" class="note"></p>
+      <ol id="chat-log"></ol>
+      <form id="chat-send" class="row" hidden>
+        <input id="chat-text" class="grow" autocomplete="off" aria-label="Message">
+        <button>Send</button>
+      </form>
+    </section>
+  </main>
+
+  <template id="device-card">
+    <article class="device">
+      <header>
+        <h3 class="name"></h3>
+        <span class="model"></span>
+      </header>
+      <div class="readings"></div>
+      <div class="details"></div>
+      <div class="controls interactive" hidden>
+        <button type="button" data-state="ON">On</button>
+        <button type="button" data-state="OFF">Off</button>
+        <button type="button" data-state="TOGGLE">Toggle</button>
+        <p class="note result"></p>
+      </div>
+      <footer class="updated">Waiting for a report</footer>
+    </article>
+  </template>
+</body>
+</html>

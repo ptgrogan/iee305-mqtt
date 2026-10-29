@@ -53,6 +53,10 @@ python chat.py YOUR_NAME --room team3
 
 Close the chat window instead of pressing Ctrl+C, and the others see `(lost connection)`: the broker publishes your **Last Will** message when a client disappears without disconnecting.
 
+### Browser client
+
+Open <https://mqtt.iee305.code-lab.org/> and log in as `student` with the same class password. The page is another MQTT client, written in JavaScript with the MQTT.js library. It connects over secure WebSockets on port 443, like the Python scripts, and the broker applies the same permissions. You can watch a topic filter, publish with any QoS and the retain flag, and chat with classmates who use `chat.py`. Closing the tab while in a chat room triggers your Last Will. Its source, [`ec2/web/app.js`](../ec2/web/app.js), is short and commented: compare its `connect`, `subscribe`, `publish`, and `message` handling with the Python template below.
+
 ### Writing your own client
 
 Start from this template. Each script in this folder is a commented, slightly longer version of it.
@@ -94,10 +98,12 @@ Common mistakes:
 
 ```text
 python subscribe.py
-python subscribe.py --topic iee305/l20/zigbee2mqtt/lecture_sensor
+python subscribe.py --topic iee305/l20/zigbee2mqtt/HT-1
 ```
 
-The output shows receipt time in UTC, the retained-message flag, QoS, the MQTT topic, and the payload. The default subscription `iee305/l20/zigbee2mqtt/#` includes all lecture devices and bridge metadata. Your account can subscribe but cannot publish here. A quiet sensor may only report periodically or when its value changes.
+The output shows receipt time in UTC, the retained-message flag, QoS, the MQTT topic, and the payload. The default subscription `iee305/l20/zigbee2mqtt/#` includes all lecture devices (HT-1 temperature/humidity sensor, MB-1 multi-button, WO-1 wall outlet) and bridge metadata. Your account can subscribe but cannot publish here. A quiet sensor may only report periodically or when its value changes.
+
+The browser client shows the same messages as one card per device. Try WO-1's Toggle button: the broker answers `Not authorized`, because the student account may not send device commands.
 
 During the demonstration, identify the publisher, broker, topic, and subscribers. Compare a single-device topic with the wildcard subscription, then explain whether two students receive the same message and whether the device knows who subscribed.
 

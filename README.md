@@ -3,16 +3,19 @@
 One MQTT broker on an Amazon Linux 2023 EC2 host, `mqtt.iee305.code-lab.org`, supports two lectures:
 
 - **L-19, publish and subscribe:** students use the Paho Python library to publish and subscribe under `iee305/l19/`.
-- **L-20, Zigbee to MQTT:** Zigbee2MQTT runs beside a SONOFF USB dongle on a Raspberry Pi 3 and publishes sensor telemetry; students subscribe under `iee305/l20/` but cannot send device commands.
+- **L-20, Zigbee to MQTT:** Zigbee2MQTT runs beside a SONOFF USB dongle on a Raspberry Pi 3 and publishes telemetry from a temperature/humidity sensor (HT-1), a multi-button (MB-1), and a wall outlet (WO-1); students subscribe under `iee305/l20/` but cannot send device commands.
+
+The same host also serves a **browser client** at `https://mqtt.iee305.code-lab.org/`. It works as the class display for both lectures, and as a second kind of client for students: an MQTT.js client in the browser, using the same broker, password, and topic permissions as the Python scripts.
 
 ```text
-Zigbee sensor --radio--> SONOFF ZBDongle-E --USB--> Raspberry Pi
-                                                 Zigbee2MQTT container
-                                                  | MQTT over secure WebSockets :443
-                                                  v
-                    Let's Encrypt <--:80--   EC2: certbot + Mosquitto
-                                                  |  :443 (WebSockets), :8883 (MQTT/TLS)
-                                                  +--> student Python publishers and subscribers
+Zigbee devices --radio--> SONOFF ZBDongle-E --USB--> Raspberry Pi
+                                                  Zigbee2MQTT container
+                                                   | MQTT over secure WebSockets :443
+                                                   v
+                    Let's Encrypt <--:80--    EC2: certbot, nginx, Mosquitto
+                                                   |  :443 HTTPS: browser page, and WebSockets (nginx -> Mosquitto)
+                                                   |  :8883 MQTT/TLS (Mosquitto)
+                                                   +--> student Python clients, browsers, and the class display
 
 Instructor browser --> localhost:8080 --SSH tunnel--> Pi frontend on 127.0.0.1:8080
 ```
@@ -21,8 +24,9 @@ Instructor browser --> localhost:8080 --SSH tunnel--> Pi frontend on 127.0.0.1:8
 
 | Location | Purpose |
 | --- | --- |
-| `ec2/compose.yaml`, `mosquitto.conf`, `acl` | Broker, its two TLS listeners, topic permissions, and the certbot renewal service |
-| `ec2/setup.sh`, `certbot-deploy.sh`, `password.sh` | Obtain the Let's Encrypt certificate, install it for Mosquitto, and create/rotate passwords |
+| `ec2/compose.yaml`, `mosquitto.conf`, `acl` | Broker, its listeners, topic permissions, nginx, and the certbot renewal service |
+| `ec2/nginx.conf`, `ec2/web/` | HTTPS on port 443: the browser client (`index.html`, `app.js`, `style.css`) and the WebSocket proxy to Mosquitto |
+| `ec2/setup.sh`, `certbot-deploy.sh`, `password.sh` | Obtain the Let's Encrypt certificate, install it for nginx and Mosquitto, and create/rotate passwords |
 | `local/compose.yaml`, `configuration.example.yaml` | Raspberry Pi Zigbee2MQTT service, SONOFF Ember adapter, and MQTT settings |
 | `students/` | `subscribe.py`, `publish.py`, `chat.py`, and their [README](students/README.md) |
 | `check_access.py` | Live TLS/authentication/authorization check for both lectures, without the dongle |
@@ -43,14 +47,16 @@ Two accounts keep the example simple:
 
 Passwords are created at setup; there are no working default credentials. The shared student password keeps internet scanners and drive-by clients out, but it can be forwarded and provides no individual attribution or revocation: within `iee305/l19/class/`, any student can publish to any topic. That is acceptable for a classroom sandbox, and a useful discussion point. Rotate the password at the end of the semester or if it is disclosed. Students do not receive SSH accounts or AWS credentials. If individual accountability becomes necessary, create one MQTT user per student and an ACL `pattern readwrite iee305/l19/class/%u/#` instead.
 
-The broker presents a publicly trusted **Let's Encrypt** certificate, so every client verifies it with an ordinary public CA list (`certifi` in Python, Node's built-in list in Zigbee2MQTT) and no certificate file is distributed. A `certbot` container renews it automatically. Mosquitto listens on two ports with the same certificate and accounts:
+The host presents a publicly trusted **Let's Encrypt** certificate, so every client verifies it with an ordinary public CA list (`certifi` in Python, Node's built-in list in Zigbee2MQTT, the browser's own list) and no certificate file is distributed. A `certbot` container renews it automatically. Two ports carry MQTT, with the same certificate and accounts:
 
-- **443, MQTT over secure WebSockets.** The default for students and the Pi, because networks that block 8883 almost never block 443.
-- **8883, MQTT over TLS.** The standard native MQTT port, kept for clients that cannot use WebSockets.
+- **443, HTTPS.** nginx ends TLS and serves the browser client. Connections that ask to upgrade to a WebSocket, on any path, go to Mosquitto's internal WebSockets listener. This is the default for students, browsers, and the Pi, because networks that block 8883 almost never block 443.
+- **8883, MQTT over TLS.** Mosquitto's standard native MQTT port, kept for clients that cannot use WebSockets.
 
 Port 80 is used only by certbot for Let's Encrypt's HTTP-01 challenge. The Zigbee2MQTT frontend is bound to the Pi's loopback port 8080; the instructor reaches it through an SSH tunnel.
 
-Images are pinned to Mosquitto `2.1.2-alpine` (password-file and ACL-file plugins), certbot `v5.8.0`, and Zigbee2MQTT `2.14.2`.
+The browser page is static: nginx sends the same files to anyone, and the page holds no secrets. A visitor sees nothing until they log in with an MQTT username and password, and the broker's ACL governs that login exactly as it governs the Python scripts. The password stays in the page's memory and is never stored.
+
+Images are pinned to Mosquitto `2.1.2-alpine` (password-file and ACL-file plugins), nginx `1.30.6-alpine`, certbot `v5.8.0`, and Zigbee2MQTT `2.14.2`. The page loads MQTT.js `5.16.1` from jsDelivr with a Subresource Integrity hash.
 
 ## 1. Prepare the EC2 host
 
@@ -81,7 +87,7 @@ In the EC2 security group, allow:
 | --- | --- | --- | --- |
 | Inbound | TCP 22 (SSH) | Your current public IP `/32` | Administration |
 | Inbound | TCP 80 (HTTP) | `0.0.0.0/0` | Let's Encrypt validation; required for issuance and renewal |
-| Inbound | TCP 443 (MQTT over WebSockets) | `0.0.0.0/0` | Students on any network, and the Pi |
+| Inbound | TCP 443 (HTTPS and MQTT over WebSockets) | `0.0.0.0/0` | Browser page; students on any network, and the Pi |
 | Inbound | TCP 8883 (MQTT over TLS) | `0.0.0.0/0`, or narrower, or closed | Optional native MQTT |
 | Outbound | Default outbound access | | Image downloads, package updates, Let's Encrypt, and DNS |
 
@@ -95,12 +101,12 @@ bash setup.sh mqtt.iee305.code-lab.org
 # Prompts twice each for the instructor and student passwords. Use different, strong passwords.
 docker compose up -d
 docker compose ps
-docker compose logs --tail=60 mosquitto
+docker compose logs --tail=60 mosquitto web
 ```
 
-The setup script runs certbot once in standalone mode to obtain the certificate, then runs `certbot-deploy.sh` to copy the key and chain into the `tls` volume, readable by the container's Mosquitto group (1883). Certbot's account and keys stay in the `letsencrypt` volume, which is never mounted into the broker. Passwords are stored as hashes in `runtime/auth/passwd`. If the two entries of a password do not match, setup asks again. Setup is safe to re-run: it keeps an unexpired certificate, avoiding Let's Encrypt rate limits, keeps any password already set, and prompts only for a missing one. Change a password at any time with `password.sh`; see Operations below.
+The setup script runs certbot once in standalone mode to obtain the certificate, then runs `certbot-deploy.sh` to copy the key and chain into the `tls` volume, readable by nginx and by the container's Mosquitto group (1883). Certbot's account and keys stay in the `letsencrypt` volume, which is never mounted into the broker. Passwords are stored as hashes in `runtime/auth/passwd`. If the two entries of a password do not match, setup asks again. Setup is safe to re-run: it keeps an unexpired certificate, avoiding Let's Encrypt rate limits, keeps any password already set, and prompts only for a missing one. Change a password at any time with `password.sh`; see Operations below.
 
-After `docker compose up -d`, the `certbot` service checks twice a day and renews the certificate once it enters its renewal window, well before it expires (Let's Encrypt certificates last 90 days or less). Its deploy hook installs the renewed files; the Mosquitto healthcheck notices the new certificate within an hour and sends Mosquitto `SIGHUP`, which reloads the certificate without disconnecting clients.
+After `docker compose up -d`, the `certbot` service checks twice a day and renews the certificate once it enters its renewal window, well before it expires (Let's Encrypt certificates last 90 days or less). Its deploy hook installs the renewed files; within an hour the Mosquitto and nginx healthchecks notice the new certificate and reload it (`SIGHUP` and `nginx -s reload`), without disconnecting clients.
 
 Never commit or distribute anything from `runtime/`, the Docker volumes, the local `.env`, or the instructor password.
 
@@ -174,29 +180,46 @@ ssh -N -L 8080:127.0.0.1:8080 YOUR_PI_USER@iee305-pi.local
 
 Keep that terminal open, then open [the frontend](http://localhost:8080) in your Windows browser. The tunnel connects your computer's port 8080 to the Pi's loopback port 8080; the Pi's LAN address on port 8080 is not the browser URL for this setup.
 
-On a new network, Zigbee2MQTT creates and saves random Zigbee keys and PAN IDs in `local/data/`. Preserve this folder between restarts; replacing it can require pairing devices again. The template selects Zigbee channel 20; check local Wi-Fi interference before pairing. Pairing starts closed. In the frontend, permit joining for a short interval, put a sensor into pairing mode, and close joining when done. Rename a sensor to `lecture_sensor` for a readable topic:
+On a new network, Zigbee2MQTT creates and saves random Zigbee keys and PAN IDs in `local/data/`. Preserve this folder between restarts; replacing it can require pairing devices again. The template selects Zigbee channel 20; check local Wi-Fi interference before pairing. Pairing starts closed. In the frontend, permit joining for a short interval, put a device into pairing mode, and close joining when done. Rename each device to its label, `HT-1`, `MB-1`, and `WO-1`, for readable topics:
 
 ```text
-iee305/l20/zigbee2mqtt/lecture_sensor
+iee305/l20/zigbee2mqtt/HT-1
+iee305/l20/zigbee2mqtt/MB-1
+iee305/l20/zigbee2mqtt/WO-1
 ```
+
+The browser client builds its device cards from the retained `bridge/devices` message, so it needs no change when devices are added or renamed.
 
 ## 4. Give students the repository
 
-Share two things through Canvas: the repository URL and the class password for username `student`. Students need Git and Python 3.10+; they need no certificate file, dongle, Docker, or AWS account. [students/README.md](students/README.md) has their setup commands, the L-19 and L-20 instructions, and a troubleshooting table. The same clone and password work for both lectures.
+Share three things through Canvas: the repository URL, the browser client URL `https://mqtt.iee305.code-lab.org/`, and the class password for username `student`. Students need Git and Python 3.10+ for the scripts, or only a browser for the page; they need no certificate file, dongle, Docker, or AWS account. [students/README.md](students/README.md) has their setup commands, the L-19 and L-20 instructions, and a troubleshooting table. The same password works for both lectures and both clients.
 
 The scripts connect over secure WebSockets on port 443 and verify the certificate with `certifi`, the Python package of public CAs. Using `certifi` explicitly avoids a common macOS problem, where Python from python.org has no CA list until its "Install Certificates" step is run. Each client gets a distinct broker-assigned ID; students should not all use the same fixed client ID, because the broker disconnects an existing session when another client connects with the same ID.
+
+### The browser client and class display
+
+Open `https://mqtt.iee305.code-lab.org/` and log in. Username `student` is filled in; the instructor can type `instructor` instead. The page has three panels:
+
+- **Lecture 19:** a live table of messages on a topic filter (default `iee305/l19/#`), with the same columns as `subscribe.py`. It also has a publish form with QoS and retain options, which shows the broker's response as `publish.py` does: `Success`, `No matching subscribers`, or `Not authorized`.
+- **Lecture 20:** one card per Zigbee2MQTT device: temperature and humidity for HT-1, the last button action for MB-1, and state and power for WO-1. Each card also lists battery, link quality, and last seen, and is labelled when a value is the broker's retained copy. Outlet cards have On/Off/Toggle buttons that publish to `<device>/set`; they work for `instructor` and return `Not authorized` for `student`.
+- **Chat:** joins the same rooms as `chat.py`, with the same JSON format and Last Will, so browser and Python users talk to each other.
+
+For the projector, press **Class display**, or open `https://mqtt.iee305.code-lab.org/?display`. Display mode enlarges the type and hides the forms, leaving the L-19 message feed beside the L-20 device cards. On a projected screen, log in as `student`. Switch out of display mode to use the outlet buttons as `instructor`.
+
+The page itself is a teaching example. `ec2/web/app.js` is a short, commented MQTT.js client: connect, subscribe, publish, and handle messages, the same steps as the Python template in a different language and runtime. To try changes before deploying, open `ec2/web/index.html` directly from disk. A page opened as a local file connects to the class broker, and `?broker=wss://HOST/mqtt` points it at another one.
 
 ## 5. Lecture 19: publish and subscribe
 
 Students publish under `iee305/l19/class/`, conventionally `iee305/l19/class/ASURITE/...`, and can read everything under `iee305/l19/`. Only the instructor can publish under `iee305/l19/instructor/`. Suggested sequence:
 
-1. Everyone runs `subscribe.py --topic "iee305/l19/#"`. Publish a broadcast with `publish.py iee305/l19/instructor/announce "Welcome to L-19" --username instructor`.
+1. Project the class display. Everyone runs `subscribe.py --topic "iee305/l19/#"`. Publish a broadcast with `publish.py iee305/l19/instructor/announce "Welcome to L-19" --username instructor`; it appears on every terminal and on the projector at once.
 2. Students publish to their own topic with `publish.py`, then subscribe to `iee305/l19/class/+/hello` to see the single-level wildcard collect everyone's messages.
 3. **Retained messages:** publish with `--retain`, then start a new subscriber; it receives the saved value immediately with `retain=True`. Note that `No matching subscribers` is a successful broker response, not an error.
 4. **QoS:** compare `--qos 0`, `1`, and `2`; with QoS 0 there is no broker acknowledgment.
 5. **Authorization:** a student publish to `iee305/l19/instructor/...` or `iee305/l20/...` returns `Not authorized`. The login succeeded; authentication and authorization are different checks.
 6. **Event-driven clients:** run `chat.py` in pairs. It uses `loop_start()` so the main thread can read the keyboard, JSON payloads, and a **Last Will**: close a chat window abruptly and the broker announces `(lost connection)`.
-7. Students write their own client from the template in the student README.
+7. **Another kind of client:** students open the browser client, publish from it, and join a chat room alongside `chat.py` users. Closing the browser tab triggers the Last Will just as closing a terminal does. Compare `ec2/web/app.js` with `subscribe.py`: different language and library, the same broker, credentials, topics, and callbacks.
+8. Students write their own client from the template in the student README.
 
 After class, clear retained messages students left behind. From the repository root, in a Python environment with `students/requirements.txt` installed:
 
@@ -207,17 +230,17 @@ After class, clear retained messages students left behind. From the repository r
 
 ## 6. Lecture 20: Zigbee telemetry
 
-`subscribe.py` with no options subscribes to `iee305/l20/zigbee2mqtt/#`: device messages and bridge metadata. Narrow it with `--topic iee305/l20/zigbee2mqtt/lecture_sensor`.
+`subscribe.py` with no options subscribes to `iee305/l20/zigbee2mqtt/#`: device messages and bridge metadata. Narrow it with `--topic iee305/l20/zigbee2mqtt/HT-1`. The class display shows the same subscription as device cards.
 
 The output contains the **receipt time** in UTC, `retain`, QoS, topic, and JSON payload. A receipt timestamp is not the sensor's sampling time. The template also enables a device `last_seen` field. Some devices send on change or periodically; a quiet sensor is not necessarily disconnected. A retained message, when present, represents the broker's saved last value, not necessarily a fresh observation.
 
 Suggested live sequence:
 
-1. Run two subscribers, then trigger a sensor. Trace device → coordinator → Zigbee2MQTT → EC2 broker → both subscribers.
-2. Compare a wildcard subscription with a single device topic. Inspect JSON fields; their names depend on the device.
+1. Project the class display and run two subscribers, then press MB-1 or breathe on HT-1. Trace device → coordinator → Zigbee2MQTT → EC2 broker → both subscribers and the display.
+2. Compare a wildcard subscription with a single device topic. Inspect JSON fields; their names depend on the device. Expand "All messages" on the display to see the raw messages behind the cards.
 3. Discuss publishers, topics, subscriptions, and how the broker distributes a message without the sensor knowing subscribers' addresses.
-4. Show that student credentials authenticate successfully while publishing to `iee305/l20/...` is denied.
-5. If you have a controllable device, demonstrate a command from the instructor frontend. Zigbee2MQTT subscribes for commands and publishes state. Students remain observers.
+4. Show that student credentials authenticate successfully while publishing to `iee305/l20/...` is denied. Students can press WO-1's Toggle in their own browser and see `Not authorized`.
+5. Log in as `instructor` and toggle WO-1. The command goes to `iee305/l20/zigbee2mqtt/WO-1/set`; Zigbee2MQTT, subscribed to it, switches the outlet and publishes the new state, which every subscriber sees. Students remain observers.
 
 ## 7. Rehearse access
 
@@ -229,7 +252,7 @@ python3 -m venv .venv
 .venv/bin/python check_access.py
 ```
 
-It prompts for both passwords. Over WebSockets on 443 and MQTT/TLS on 8883 it checks verified TLS, rejection of anonymous and bad-password logins, and that:
+It prompts for both passwords and checks that the browser page loads over HTTPS. Over WebSockets on 443, through nginx on both the `/mqtt` and `/` paths, and over MQTT/TLS on 8883, it checks verified TLS, rejection of anonymous and bad-password logins, and that:
 
 - a student receives the instructor's L-20 messages but cannot publish to L-20;
 - two students can exchange messages under `iee305/l19/class/`;
@@ -239,11 +262,12 @@ Test messages are non-retained and use unique `.../access-check/...` topics, out
 
 ## Operations and troubleshooting
 
-- **Update source:** commit and push source changes from your development computer, then `cd ~/iee305-mqtt` and `git pull --ff-only` on EC2 and the Pi. Run `docker compose up -d` from `ec2/` or `local/` as appropriate; after changing `mosquitto.conf` or `acl`, run `docker compose restart mosquitto`. Git leaves ignored credentials and runtime state on each host. Keep `.env`, `ec2/runtime/`, and `local/data/` out of commits, and preserve them between updates.
+- **Update source:** commit and push source changes from your development computer, then `cd ~/iee305-mqtt` and `git pull --ff-only` on EC2 and the Pi. Run `docker compose up -d` from `ec2/` or `local/` as appropriate; after changing `mosquitto.conf` or `acl`, run `docker compose restart mosquitto`, and after changing `nginx.conf`, `docker compose restart web`. Changes under `ec2/web/` take effect on the next page load. Git leaves ignored credentials and runtime state on each host. Keep `.env`, `ec2/runtime/`, and `local/data/` out of commits, and preserve them between updates.
 - **Rotate class access:** on EC2, `bash password.sh student`. If the broker is running, the script signals it to reload the password file, so new logins need the new password immediately; clients already connected stay connected. To disconnect them too, follow with `docker compose restart mosquitto`. Update Canvas. Rotate `instructor` similarly, update `local/.env`, then run `docker compose up -d --force-recreate zigbee2mqtt` on the Pi.
 - **Certificate status:** on EC2, `docker compose exec certbot certbot certificates` shows the expiry date; `docker compose exec certbot certbot renew --dry-run` tests renewal against Let's Encrypt's staging service. `docker compose ps` should show Mosquitto as `healthy`. Renewal needs inbound port 80 and a correct A record.
 - **TLS failure:** the hostname must be exactly `mqtt.iee305.code-lab.org`; check the client's clock and run `pip install --upgrade certifi`. Keep certificate verification enabled.
-- **Timeout:** check the A record, the security-group rules for 443/8883, and `docker compose logs mosquitto`. If only 8883 fails, the client's network is blocking it; use 443.
+- **Timeout:** check the A record, the security-group rules for 443/8883, and `docker compose logs mosquitto web`. If only 8883 fails, the client's network is blocking it; use 443. Mosquitto's log shows nginx's container address for every WebSocket client; nginx's access log records the client addresses.
+- **Browser page:** if Connect does nothing, MQTT.js probably did not load from jsDelivr; check the browser's developer console. Students should hard-refresh after a page update. `Could not reach ...` on the page is the same check as for the scripts.
 - **USB missing:** on the Pi, check power, the USB connection, `lsusb`, and the `/dev/serial/by-id/` path in `.env`. After unplugging and reconnecting the dongle, run `docker compose up -d --force-recreate zigbee2mqtt` on the Pi.
 - **Ember startup error:** check coordinator firmware, baud rate, software flow control, and whether another process owns the adapter.
 - **Computer port 8080 busy:** leave the Pi Compose file as supplied, use `ssh -N -L 8081:127.0.0.1:8080 YOUR_PI_USER@iee305-pi.local`, then browse to `http://localhost:8081`. If port 8080 is occupied on the Pi itself, change the Compose mapping to `127.0.0.1:8081:8080` and point the tunnel's destination at port 8081.
@@ -260,3 +284,4 @@ Test messages are non-retained and use unique `.../access-check/...` topics, out
 - [Zigbee2MQTT Docker/Compose installation](https://www.zigbee2mqtt.io/guide/installation/02_docker.html)
 - [Zigbee2MQTT MQTT settings](https://www.zigbee2mqtt.io/guide/configuration/mqtt.html), [topics and messages](https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html)
 - [Paho MQTT Python client documentation](https://eclipse.dev/paho/clients/python/docs/)
+- [MQTT.js](https://github.com/mqttjs/MQTT.js), [nginx WebSocket proxying](https://nginx.org/en/docs/http/websocket.html)

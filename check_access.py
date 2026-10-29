@@ -1,4 +1,4 @@
-"""Check the class broker: TLS, logins, and the L-19 and L-20 topic permissions.
+"""Check the class broker: TLS, the browser page, logins, and the L-19 and L-20 topic permissions.
 
 Every test message is non-retained and uses a unique .../access-check/... topic,
 outside the Zigbee command path.
@@ -7,7 +7,9 @@ outside the Zigbee command path.
 import argparse
 from getpass import getpass
 import secrets
+import ssl
 import threading
+import urllib.request
 
 import certifi
 import paho.mqtt.client as mqtt
@@ -22,6 +24,13 @@ def require_event(event, description):
         raise RuntimeError(f"Timed out: {description}")
 
 
+def check_page(args):
+    context = ssl.create_default_context(cafile=args.ca)
+    with urllib.request.urlopen(f"https://{args.host}/", context=context, timeout=10) as response:
+        if b"<title>IEE 305 MQTT</title>" not in response.read():
+            raise RuntimeError(f"https://{args.host}/ did not return the browser page")
+
+
 def connect(args, transport, username=None, password=None, expect_success=True):
     ready = threading.Event()
     result = []
@@ -29,6 +38,10 @@ def connect(args, transport, username=None, password=None, expect_success=True):
                          protocol=mqtt.MQTTv5)
     if username is not None:
         client.username_pw_set(username, password)
+    if transport == "websockets" and username == "instructor":
+        # Zigbee2MQTT requests path / where Paho requests /mqtt; nginx must
+        # forward both to the broker rather than serve the page.
+        client.ws_set_options(path="/")
     client.tls_set(ca_certs=args.ca)
 
     def on_connect(client, userdata, flags, reason_code, properties):
@@ -105,6 +118,9 @@ def main():
     args = parser.parse_args()
     instructor_password = getpass("Instructor password: ")
     student_password = getpass("Student password: ")
+
+    check_page(args)
+    print("PASS: browser page served over HTTPS on port 443")
 
     for username, password in [(None, None), ("student", secrets.token_urlsafe(32))]:
         connect(args, "websockets", username, password, expect_success=False)
