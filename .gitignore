@@ -4,3 +4,4 @@
 **/.env
 local/data/
 ec2/runtime/
+hw8/*.ipynb

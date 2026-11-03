@@ -1,9 +1,10 @@
-# IEE 305 — MQTT examples for Lectures 19 and 20
+# IEE 305 — MQTT examples for Lectures 19 and 20 and HW-8
 
-One MQTT broker on an Amazon Linux 2023 EC2 host, `mqtt.iee305.code-lab.org`, supports two lectures:
+One MQTT broker on an Amazon Linux 2023 EC2 host, `mqtt.iee305.code-lab.org`, supports two lectures and a homework assignment:
 
 - **L-19, publish and subscribe:** students use the Paho Python library to publish and subscribe under `iee305/l19/`.
 - **L-20, Zigbee to MQTT:** Zigbee2MQTT runs beside a SONOFF USB dongle on a Raspberry Pi 3 and publishes telemetry from a temperature/humidity sensor (HT-1), a multi-button (MB-1), and a wall outlet (WO-1); students subscribe under `iee305/l20/` but cannot send device commands.
+- **HW-8, warehouse monitoring:** an optional simulator container on the EC2 host publishes three refrigerated-zone sensors; students subscribe under `iee305/hw8/` but cannot publish there.
 
 The same host also serves a **browser client** at `https://mqtt.iee305.code-lab.org/`. It works as the class display for both lectures, and as a second kind of client for students: an MQTT.js client in the browser, using the same broker, password, and topic permissions as the Python scripts.
 
@@ -15,6 +16,7 @@ Zigbee devices --radio--> SONOFF ZBDongle-E --USB--> Raspberry Pi
                     Let's Encrypt <--:80--    EC2: certbot, nginx, Mosquitto
                                                    |  :443 HTTPS: browser page, and WebSockets (nginx -> Mosquitto)
                                                    |  :8883 MQTT/TLS (Mosquitto)
+                                                   |  :1883 MQTT, Docker network only <-- HW-8 simulator container (optional)
                                                    +--> student Python clients, browsers, and the class display
 
 Instructor browser --> localhost:8080 --SSH tunnel--> Pi frontend on 127.0.0.1:8080
@@ -30,20 +32,25 @@ Instructor browser --> localhost:8080 --SSH tunnel--> Pi frontend on 127.0.0.1:8
 | `local/compose.yaml`, `configuration.example.yaml` | Raspberry Pi Zigbee2MQTT service, SONOFF Ember adapter, and MQTT settings |
 | `students/` | `subscribe.py`, `publish.py`, `chat.py`, and their [README](students/README.md) |
 | `check_access.py` | Live TLS/authentication/authorization check for both lectures, without the dongle |
-| `clear_retained.py` | Instructor cleanup of retained messages students leave under `iee305/l19/class/` |
+| `clear_retained.py` | Instructor cleanup of retained messages students leave under `iee305/l19/class/`, or of HW-8's device values |
+| `hw8/`, `ec2/prepare_hw8.sh` | HW-8 simulator, its credential, a live rehearsal check, and offline tests; see the [HW-8 README](hw8/README.md) |
 
-Two accounts keep the example simple:
+Two shared accounts keep the example simple; a third, internal account belongs to the HW-8 simulator:
 
 | MQTT username | Share with | Used by |
 | --- | --- | --- |
 | `instructor` | Instructor only | Zigbee2MQTT, broadcasts, `check_access.py`, `clear_retained.py` |
-| `student` | Enrolled students through Canvas | Every student, for both lectures |
+| `student` | Enrolled students through Canvas | Every student, for both lectures and HW-8 |
+| `hw8-publisher` | Nobody; `prepare_hw8.sh` generates it | The HW-8 simulator container only |
 
 | Topic | `instructor` | `student` |
 | --- | --- | --- |
 | `iee305/l19/class/#` | publish and subscribe | publish and subscribe |
 | `iee305/l19/instructor/#` | publish and subscribe | subscribe only |
 | `iee305/l20/#` (Zigbee2MQTT) | publish and subscribe | subscribe only |
+| `iee305/hw8/#` (HW-8 simulator) | publish and subscribe | subscribe only |
+
+`hw8-publisher` can publish only to the three `iee305/hw8/warehouse/REF-0N` device topics and cannot subscribe to anything.
 
 Passwords are created at setup; there are no working default credentials. The shared student password keeps internet scanners and drive-by clients out, but it can be forwarded and provides no individual attribution or revocation: within `iee305/l19/class/`, any student can publish to any topic. That is acceptable for a classroom sandbox, and a useful discussion point. Rotate the password at the end of the semester or if it is disclosed. Students do not receive SSH accounts or AWS credentials. If individual accountability becomes necessary, create one MQTT user per student and an ACL `pattern readwrite iee305/l19/class/%u/#` instead.
 
@@ -56,7 +63,7 @@ Port 80 is used only by certbot for Let's Encrypt's HTTP-01 challenge. The Zigbe
 
 The browser page is static: nginx sends the same files to anyone, and the page holds no secrets. A visitor sees nothing until they log in with an MQTT username and password, and the broker's ACL governs that login exactly as it governs the Python scripts. The password stays in the page's memory and is never stored.
 
-Images are pinned to Mosquitto `2.1.2-alpine` (password-file and ACL-file plugins), nginx `1.30.6-alpine`, certbot `v5.8.0`, and Zigbee2MQTT `2.14.2`. The page loads MQTT.js `5.16.1` from jsDelivr with a Subresource Integrity hash.
+Images are pinned to Mosquitto `2.1.2-alpine` (password-file and ACL-file plugins), nginx `1.30.6-alpine`, certbot `v5.8.0`, and Zigbee2MQTT `2.14.2`. The HW-8 simulator builds on `python:3.12.16-slim` with `paho-mqtt` `2.1.0`. The page loads MQTT.js `5.16.1` from jsDelivr with a Subresource Integrity hash.
 
 ## 1. Prepare the EC2 host
 
@@ -264,9 +271,30 @@ It prompts for both passwords and checks that the browser page loads over HTTPS.
 
 Test messages are non-retained and use unique `.../access-check/...` topics, outside the Zigbee command path. A successful check verifies the broker without a USB dongle; still rehearse actual sensor reports separately. If 8883 fails but 443 passes, the network blocks 8883; the student scripts are unaffected.
 
+## 8. HW-8: simulated warehouse sensors
+
+The optional `hw8` Compose profile runs a continuous, deterministic cold-storage simulator alongside the broker on EC2. It publishes three retained device topics, `iee305/hw8/warehouse/REF-01` to `REF-03`, every five seconds over a Docker-only listener on port 1883; no host port, DNS name, or classroom device is added. Students subscribe to `iee305/hw8/warehouse/+` with the existing `student` password, from Python or the browser client's Lecture 19 panel, and cannot publish to HW-8 topics.
+
+In the **EC2 SSH terminal**, after `git pull --ff-only`, from `~/iee305-mqtt/ec2`:
+
+```bash
+bash prepare_hw8.sh
+docker compose restart mosquitto
+docker compose --profile hw8 up -d --build hw8-publisher
+```
+
+Before releasing the assignment, rehearse from the repository root as in section 7:
+
+```bash
+.venv/bin/python hw8/test_hw8.py
+.venv/bin/python hw8/check_hw8.py
+```
+
+The [HW-8 README](hw8/README.md) describes the payload, the scenario, rehearsal, outages, and cleanup of the retained device values after the assignment.
+
 ## Operations and troubleshooting
 
-- **Update source:** commit and push source changes from your development computer, then `cd ~/iee305-mqtt` and `git pull --ff-only` on EC2 and the Pi. Run `docker compose up -d` from `ec2/` or `local/` as appropriate; after changing `mosquitto.conf` or `acl`, run `docker compose restart mosquitto`, and after changing `nginx.conf`, `docker compose restart web`. Changes under `ec2/web/` take effect on the next page load. Git leaves ignored credentials and runtime state on each host. Keep `.env`, `ec2/runtime/`, and `local/data/` out of commits, and preserve them between updates.
+- **Update source:** commit and push source changes from your development computer, then `cd ~/iee305-mqtt` and `git pull --ff-only` on EC2 and the Pi. Run `docker compose up -d` from `ec2/` or `local/` as appropriate; after changing `mosquitto.conf` or `acl`, run `docker compose restart mosquitto`, and after changing `nginx.conf`, `docker compose restart web`; after changing `hw8/`, `docker compose --profile hw8 up -d --build hw8-publisher`, because a plain `docker compose up -d` neither rebuilds nor restarts the profiled publisher. Changes under `ec2/web/` take effect on the next page load. Git leaves ignored credentials and runtime state on each host. Keep `.env`, `ec2/runtime/`, and `local/data/` out of commits, and preserve them between updates.
 - **Rotate class access:** on EC2, `bash password.sh student`. If the broker is running, the script signals it to reload the password file, so new logins need the new password immediately; clients already connected stay connected. To disconnect them too, follow with `docker compose restart mosquitto`. Update Canvas. Rotate `instructor` similarly, update `local/.env`, then run `docker compose up -d --force-recreate zigbee2mqtt` on the Pi.
 - **Certificate status:** on EC2, `docker compose exec certbot certbot certificates` shows the expiry date; `docker compose exec certbot certbot renew --dry-run` tests renewal against Let's Encrypt's staging service. `docker compose ps` should show Mosquitto as `healthy`. Renewal needs inbound port 80 and a correct A record.
 - **TLS failure:** the hostname must be exactly `mqtt.iee305.code-lab.org`; check the client's clock and run `pip install --upgrade certifi`. Keep certificate verification enabled.
@@ -275,7 +303,7 @@ Test messages are non-retained and use unique `.../access-check/...` topics, out
 - **USB missing:** on the Pi, check power, the USB connection, `lsusb`, and the `/dev/serial/by-id/` path in `.env`. After unplugging and reconnecting the dongle, run `docker compose up -d --force-recreate zigbee2mqtt` on the Pi.
 - **Ember startup error:** check coordinator firmware, baud rate, software flow control, and whether another process owns the adapter.
 - **Computer port 8080 busy:** leave the Pi Compose file as supplied, use `ssh -N -L 8081:127.0.0.1:8080 YOUR_PI_USER@iee305-pi.local`, then browse to `http://localhost:8081`. If port 8080 is occupied on the Pi itself, change the Compose mapping to `127.0.0.1:8081:8080` and point the tunnel's destination at port 8081.
-- **Stop the demonstration:** run `docker compose down` in each Compose directory. The broker, certificate, and local Zigbee state are preserved in volumes and `local/data/`. Stop/terminate EC2 and release unneeded paid resources separately.
+- **Stop the demonstration:** run `docker compose --profile hw8 down` in `ec2/` and `docker compose down` in `local/`. In `ec2/`, a plain `docker compose down` leaves a running HW-8 publisher behind, and with it the Compose network. The broker, certificate, and local Zigbee state are preserved in volumes and `local/data/`. Stop/terminate EC2 and release unneeded paid resources separately.
 
 ## References
 

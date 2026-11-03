@@ -111,6 +111,36 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  hw8-publisher:
+    profiles: ["hw8"]
+    build:
+      context: ../hw8
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_USERNAME: hw8-publisher
+      MQTT_PASSWORD_FILE: /run/secrets/hw8_password
+    secrets:
+      - hw8_password
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,time; assert time.time()-os.path.getmtime('/tmp/hw8-heartbeat') < 30"]
+      interval: 15s
+      timeout: 5s
+      start_period: 45s
+      retries: 2
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+secrets:
+  hw8_password:
+    file: ./runtime/hw8/password
+
 volumes:
   mqtt-data:
   letsencrypt:
